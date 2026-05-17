@@ -50,6 +50,9 @@
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*"
   },
+  "optionalDependencies": {
+    "sharp": "^0.34.0"
+  },
   "packageManager": "pnpm@11.1.2",
   "pi": {
     "extensions": [

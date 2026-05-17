@@ -10,6 +10,7 @@ import {
   type PasterImageContent,
   type SupportedImageMimeType,
 } from "./types.ts";
+import { optimizeImageBytes } from "./optimize-image.ts";
 
 interface PathToken {
   raw: string;
@@ -233,4 +234,53 @@ export function imagesForText(
       data: attachment.data,
     })),
   ];
+}
+
+/**
+ * Async variant of imagesForText that runs each attachment through the
+ * Anthropic-aware image optimizer (resize to 8000px cap, JPEG ladder to stay
+ * under the 5 MB / 32 MB request caps). Optimization is cached on the
+ * attachment so the cost is paid once per image, not per submit.
+ *
+ * Used by paster's `input` handler; safe to await on the hot path because
+ * sharp is only invoked when the image is actually over the limits.
+ */
+export async function imagesForTextOptimized(
+  store: AttachmentStore,
+  text: string,
+  existing: PasterImageContent[] = [],
+): Promise<PasterImageContent[]> {
+  const attachments = store.matchingPlaceholders(text);
+  const optimized: PasterImageContent[] = [];
+  for (const attachment of attachments) {
+    if (!attachment.optimized) {
+      try {
+        const input = Buffer.from(attachment.data, "base64");
+        const result = await optimizeImageBytes(input, attachment.mimeType);
+        if (result.changed) {
+          attachment.data = result.data;
+          attachment.mimeType = result.mimeType;
+          if (result.finalDim) {
+            attachment.dimensions = {
+              widthPx: result.finalDim.width,
+              heightPx: result.finalDim.height,
+            };
+          }
+        }
+        attachment.optimized = true;
+        attachment.originalBytes = result.originalBytes;
+        attachment.finalBytes = result.finalBytes;
+        attachment.optimizeActions = result.actions;
+      } catch {
+        // optimization is best-effort; fall through with the original bytes
+        attachment.optimized = true;
+      }
+    }
+    optimized.push({
+      type: "image",
+      mimeType: attachment.mimeType,
+      data: attachment.data,
+    });
+  }
+  return [...existing, ...optimized];
 }
