@@ -8,7 +8,8 @@ export const PASTE_START = "\x1b[200~";
 export const PASTE_END = "\x1b[201~";
 const PLACEHOLDER_REGEX = /\[#image \d+\]/g;
 const PASTE_MARKER_REGEX = /\[paste #(\d+)( (\+\d+ lines|\d+ chars))?\]/g;
-const baseSegmenter = new Intl.Segmenter();
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+const wordSegmenter = new Intl.Segmenter(undefined, { granularity: "word" });
 
 interface AtomicSpan {
   start: number;
@@ -16,7 +17,7 @@ interface AtomicSpan {
 }
 
 interface EditorSegmentationAccess {
-  segment?: (text: string) => Iterable<Intl.SegmentData>;
+  segment?: (text: string, mode?: "word" | "grapheme") => Iterable<Intl.SegmentData>;
   pastes?: Map<number, string>;
 }
 
@@ -41,13 +42,14 @@ export function segmentTextWithAtomicImages(
   text: string,
   store: AttachmentStore,
   validPasteIds: Set<number> = new Set(),
+  segmenter: Intl.Segmenter = graphemeSegmenter,
 ): Intl.SegmentData[] {
   const spans = atomicSpansForText(text, validPasteIds);
-  if (spans.length === 0) return [...baseSegmenter.segment(text)];
+  if (spans.length === 0) return [...segmenter.segment(text)];
 
   const result: Intl.SegmentData[] = [];
   let spanIndex = 0;
-  for (const segment of baseSegmenter.segment(text)) {
+  for (const segment of segmenter.segment(text)) {
     while (spanIndex < spans.length && spans[spanIndex]!.end <= segment.index) spanIndex++;
     const span = spans[spanIndex];
     if (span && segment.index >= span.start && segment.index < span.end) {
@@ -159,11 +161,12 @@ export class PasterEditor extends CustomEditor {
 
   private installAtomicImageSegmentation(): void {
     const editor = this as unknown as EditorSegmentationAccess;
-    editor.segment = (text: string) =>
+    editor.segment = (text: string, mode: "word" | "grapheme" = "grapheme") =>
       segmentTextWithAtomicImages(
         text,
         this.pasterOptions.store,
         new Set(editor.pastes?.keys() ?? []),
+        mode === "word" ? wordSegmenter : graphemeSegmenter,
       );
   }
 
