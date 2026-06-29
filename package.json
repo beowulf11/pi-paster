@@ -36,7 +36,7 @@
     "test": "vp test",
     "check": "vp check",
     "prepare": "vp config",
-    "prepublishOnly": "vp run build"
+    "prepublishOnly": "node scripts/check-npm-auth.mjs && vp run build"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.74.0",
